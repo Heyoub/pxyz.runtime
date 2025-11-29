@@ -65,6 +65,89 @@ impl GraphIR {
     pub fn entry_count(&self) -> usize {
         self.entries.len()
     }
+
+    /// Assign edge indices to nodes (IR invariant)
+    ///
+    /// MUST be called after edges are added and before validation.
+    /// Sets `edge_start` and `edge_count` on each node.
+    pub fn assign_edge_indices(&mut self) {
+        // Sort edges by source node for efficient lookup
+        self.edges.sort_by_key(|e| (e.from, e.id));
+
+        // Collect edge assignments first (to avoid borrow conflict)
+        let mut edge_assignments: Vec<(NodeId, u16, u16)> = Vec::new();
+        let mut current_node: Option<NodeId> = None;
+        let mut current_start: u16 = 0;
+        let mut current_count: u16 = 0;
+
+        for (i, edge) in self.edges.iter().enumerate() {
+            if Some(edge.from) != current_node {
+                // Record previous node's edges
+                if let Some(node_id) = current_node {
+                    edge_assignments.push((node_id, current_start, current_count));
+                }
+
+                // Start new node
+                current_node = Some(edge.from);
+                current_start = i as u16;
+                current_count = 1;
+            } else {
+                current_count += 1;
+            }
+        }
+
+        // Record last node
+        if let Some(node_id) = current_node {
+            edge_assignments.push((node_id, current_start, current_count));
+        }
+
+        // Apply edge assignments
+        for (node_id, start, count) in edge_assignments {
+            if let Some(node) = self.get_node_mut(node_id) {
+                node.edge_start = start;
+                node.edge_count = count;
+            }
+        }
+    }
+
+    /// Validate IR invariants (debug builds only)
+    ///
+    /// Call this after lowering to catch structural bugs early.
+    #[cfg(debug_assertions)]
+    pub fn assert_invariants(&self) {
+        // All edge targets must exist
+        for edge in &self.edges {
+            assert!(
+                self.nodes.iter().any(|n| n.id == edge.from),
+                "Edge {} references non-existent source node {}",
+                edge.id, edge.from
+            );
+            assert!(
+                self.nodes.iter().any(|n| n.id == edge.target),
+                "Edge {} references non-existent target node {}",
+                edge.id, edge.target
+            );
+        }
+
+        // All entry points must reference existing nodes
+        for entry in &self.entries {
+            assert!(
+                self.nodes.iter().any(|n| n.id == entry.node_id),
+                "Entry ({}, {}) references non-existent node {}",
+                entry.p, entry.x, entry.node_id
+            );
+        }
+
+        // No duplicate node IDs
+        let mut seen = std::collections::HashSet::new();
+        for node in &self.nodes {
+            assert!(
+                seen.insert(node.id),
+                "Duplicate node ID: {}",
+                node.id
+            );
+        }
+    }
 }
 
 /// Graph node
@@ -316,8 +399,8 @@ impl StringPool {
     
     /// Iterate over all strings with their offsets
     pub fn iter(&self) -> impl Iterator<Item = (u32, &str)> {
-        self.offsets.iter().filter_map(|(s, &offset)| {
-            self.get(offset).map(|retrieved| (offset, retrieved))
+        self.offsets.iter().map(|(s, &offset)| {
+            (offset, s.as_str())
         })
     }
 }

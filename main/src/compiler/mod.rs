@@ -120,7 +120,9 @@ mod tests {
                     },
                 },
             ],
+            merge_policies: vec![],
             workflows: vec![Workflow {
+                description: None,
                 id: "test".into(),
                 entry: EntryPoint {
                     p: "test".into(),

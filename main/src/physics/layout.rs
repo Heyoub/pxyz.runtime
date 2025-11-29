@@ -17,7 +17,7 @@
 //! 3. Topological sort with locality-aware tie-breaking
 //! 4. Pack into cache-aligned blocks
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 /// A node in the layout graph
 #[derive(Debug, Clone)]

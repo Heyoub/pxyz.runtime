@@ -15,6 +15,8 @@ pub mod emit;
 pub mod compiler;
 #[path = "src/physics/mod.rs"]
 pub mod physics;
+#[path = "src/runtime/mod.rs"]
+pub mod runtime;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPEC: Binary Format Constants (must match WAT + ARCHITECTURE.md)
@@ -336,27 +338,49 @@ pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Compile workflow XML to graph.bin
-pub fn compile(xml: &str, options: &CompileOptions) -> Result<CompileResult, CompileError> {
+/// Canonical compilation pipeline
+///
+/// IMPORTANT: This is the ONLY path from XML → validated IR.
+/// All tests and front-ends MUST use this to ensure consistency.
+///
+/// Pipeline stages (in order):
+/// 1. Parse XML → AST
+/// 2. Lower AST → IR
+/// 3. Compile predicates to bytecode
+/// 4. **assign_edge_indices()** ← IR invariant, must run before validation
+/// 5. Optimize (optional)
+/// 6. Validate (syntactic, semantic, pragmatic)
+pub fn compile_pipeline(xml: &str, optimize: bool) -> Result<(compiler::GraphIR, dsl::ast::OmarDocument, Vec<Diagnostic>), CompileError> {
     // Parse XML → AST
     let ast = dsl::parse(xml).map_err(|e| CompileError::Parse(e.to_string()))?;
-    
+
     // Lower AST → IR
-    let mut ir = compiler::lower(&ast).map_err(|e| CompileError::Lower(e.to_string()))?;
-    
+    let mut ir = compiler::lower(&ast)?;
+
     // Compile predicates to bytecode
-    ir = compiler::compile_predicates(ir, &ast).map_err(|e| CompileError::Predicate(e.to_string()))?;
-    
+    ir = compiler::compile_predicates(ir, &ast)?;
+
+    // **CRITICAL**: Assign edge indices before validation
+    // This maintains IR invariants (edge_count, edge_start must be set)
+    ir.assign_edge_indices();
+
     // Optimize
-    if options.optimize {
+    if optimize {
         ir = compiler::optimize(ir);
     }
-    
-    // Validate
+
+    // Validate (all three layers)
     let mut diagnostics = Vec::new();
     diagnostics.extend(compiler::check_syntactic(&ir));
     diagnostics.extend(compiler::check_semantic(&ir));
     diagnostics.extend(compiler::check_pragmatic(&ir));
+
+    Ok((ir, ast, diagnostics))
+}
+
+/// Compile workflow XML to graph.bin
+pub fn compile(xml: &str, options: &CompileOptions) -> Result<CompileResult, CompileError> {
+    let (ir, _ast, diagnostics) = compile_pipeline(xml, options.optimize)?;
     
     // Check for errors
     let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
@@ -380,42 +404,40 @@ pub fn compile(xml: &str, options: &CompileOptions) -> Result<CompileResult, Com
 }
 
 /// Validate without compiling
+///
+/// Uses the canonical pipeline but stops before binary emission.
 pub fn validate(xml: &str) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    
-    let ast = match dsl::parse(xml) {
-        Ok(ast) => ast,
-        Err(e) => {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                code: "PARSE".into(),
-                message: e.to_string(),
-                hint: None,
-                location: None,
-            });
-            return diagnostics;
-        }
-    };
-    
-    let ir = match compiler::lower(&ast) {
-        Ok(ir) => ir,
-        Err(e) => {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                code: "LOWER".into(),
-                message: e.to_string(),
-                hint: None,
-                location: None,
-            });
-            return diagnostics;
-        }
-    };
-    
-    diagnostics.extend(compiler::check_syntactic(&ir));
-    diagnostics.extend(compiler::check_semantic(&ir));
-    diagnostics.extend(compiler::check_pragmatic(&ir));
-    
-    diagnostics
+    match compile_pipeline(xml, false) {
+        Ok((_ir, _ast, diagnostics)) => diagnostics,
+        Err(CompileError::Parse(msg)) => vec![Diagnostic {
+            severity: Severity::Error,
+            code: "PARSE".into(),
+            message: msg,
+            hint: None,
+            location: None,
+        }],
+        Err(CompileError::Lower(msg)) => vec![Diagnostic {
+            severity: Severity::Error,
+            code: "LOWER".into(),
+            message: msg,
+            hint: None,
+            location: None,
+        }],
+        Err(CompileError::Predicate(msg)) => vec![Diagnostic {
+            severity: Severity::Error,
+            code: "PREDICATE".into(),
+            message: msg,
+            hint: None,
+            location: None,
+        }],
+        Err(e) => vec![Diagnostic {
+            severity: Severity::Error,
+            code: "INTERNAL".into(),
+            message: e.to_string(),
+            hint: None,
+            location: None,
+        }],
+    }
 }
 
 /// Inspect a compiled graph.bin

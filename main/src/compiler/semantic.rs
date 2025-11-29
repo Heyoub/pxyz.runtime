@@ -76,17 +76,29 @@ fn check_external_nodes_have_opcodes(ir: &GraphIR) -> Vec<Diagnostic> {
 }
 
 /// SEM003: Terminal nodes shouldn't have outgoing edges
+///
+/// NOTE: This check is robust - it computes outgoing edges dynamically
+/// instead of relying on cached `edge_count`, which might not be set yet.
 fn check_terminal_nodes_no_outgoing(ir: &GraphIR) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    
+
     for node in &ir.nodes {
-        if node.kind == NodeKind::Terminal && node.edge_count > 0 {
+        if node.kind != NodeKind::Terminal {
+            continue;
+        }
+
+        // Compute outgoing edges (don't trust cached edge_count)
+        let outgoing_edges: Vec<_> = ir.edges.iter()
+            .filter(|e| e.from == node.id)
+            .collect();
+
+        if !outgoing_edges.is_empty() {
             diags.push(Diagnostic {
                 severity: Severity::Warn,
                 code: "SEM003".into(),
                 message: format!(
                     "Terminal node '{}' has {} outgoing edge(s)",
-                    node.name, node.edge_count
+                    node.name, outgoing_edges.len()
                 ),
                 hint: Some("Terminal nodes end traversal, edges will never be taken".into()),
                 location: Some(Location {
@@ -96,7 +108,7 @@ fn check_terminal_nodes_no_outgoing(ir: &GraphIR) -> Vec<Diagnostic> {
             });
         }
     }
-    
+
     diags
 }
 
@@ -354,11 +366,15 @@ mod tests {
     #[test]
     fn test_sem003_terminal_with_outgoing() {
         let mut ir = make_valid_ir();
-        ir.nodes[1].edge_count = 1; // Fake outgoing edges
-        
+
+        // Create an actual edge from the terminal node (node 1)
+        // This simulates a workflow error where terminal has outgoing edges
+        ir.edges.push(GEdge::new(99, 1, 0)); // Terminal (1) -> Start (0)
+
         let diags = check(&ir);
-        
-        assert!(diags.iter().any(|d| d.code == "SEM003"));
+
+        assert!(diags.iter().any(|d| d.code == "SEM003"),
+            "Terminal node with outgoing edge should trigger SEM003");
     }
     
     #[test]

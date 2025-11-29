@@ -186,20 +186,21 @@ fn check_irreversible_human_path(ir: &GraphIR) -> Vec<Diagnostic> {
 /// without confirmation, that's dangerous.
 fn check_irreversible_confirmed(ir: &GraphIR) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    
+
     let suggested_nodes: Vec<&GNode> = ir.nodes.iter()
         .filter(|n| n.confirmation_status == ConfirmationStatus::Suggested)
         .collect();
-    
+
     let irreversible_nodes: Vec<&GNode> = ir.nodes.iter()
         .filter(|n| n.is_irreversible())
         .collect();
-    
+
     for suggested in &suggested_nodes {
         for irrev in &irreversible_nodes {
             if let Some(path) = find_path(ir, suggested.id, irrev.id) {
                 // Check if there's a confirmation point in the path
-                let has_confirmation = path.iter().skip(1).any(|&nid| {
+                // Skip first (source) and last (target irreversible node)
+                let has_confirmation = path.iter().skip(1).take(path.len().saturating_sub(2)).any(|&nid| {
                     ir.nodes
                         .iter()
                         .find(|n| n.id == nid)
@@ -209,7 +210,7 @@ fn check_irreversible_confirmed(ir: &GraphIR) -> Vec<Diagnostic> {
                         })
                         .unwrap_or(false)
                 });
-                
+
                 if !has_confirmation {
                     diags.push(Diagnostic {
                         severity: Severity::Error,
@@ -522,7 +523,7 @@ mod tests {
         ir.entries.push(GEntry::new("test".into(), "run".into(), 0));
         
         let diags = check(&ir);
-        
+
         assert!(diags.iter().any(|d| d.code == "PRAG004"));
     }
     

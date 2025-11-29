@@ -5,7 +5,15 @@ use crate::{CompileError, MAGIC, VERSION_MAJOR, VERSION_MINOR, HEADER_SIZE};
 use sha2::{Sha256, Digest};
 
 /// Emit graph.bin
+///
+/// IMPORTANT: IR must have passed through canonical pipeline with
+/// `assign_edge_indices()` called. This function validates invariants
+/// in debug builds to catch violations early.
 pub fn emit(ir: &GraphIR, source_xml: &str) -> Result<Vec<u8>, CompileError> {
+    // Validate IR invariants in debug builds
+    #[cfg(debug_assertions)]
+    ir.assert_invariants();
+
     let mut buffer = vec![0u8; HEADER_SIZE];
     
     // Emit nodes (16 bytes each)
@@ -128,39 +136,17 @@ pub mod entry_offsets {
     pub const NODE_ID: usize = 0x04;
 }
 
-/// FNV-1a hash for (P, X) coordinate lookup
-pub fn hash_px(p: &str, x: &str) -> u32 {
-    const FNV_PRIME: u32 = 16777619;
-    const FNV_OFFSET: u32 = 2166136261;
-    
-    let mut hash = FNV_OFFSET;
-    
-    for byte in p.bytes() {
-        hash ^= byte as u32;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    
-    hash ^= 0xFF; // Separator
-    hash = hash.wrapping_mul(FNV_PRIME);
-    
-    for byte in x.bytes() {
-        hash ^= byte as u32;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    
-    hash
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::hash_px;
+
     #[test]
     fn test_hash_px() {
         let h1 = hash_px("contact", "search");
         let h2 = hash_px("contact", "search");
         let h3 = hash_px("contact", "create");
-        
+
         assert_eq!(h1, h2);
         assert_ne!(h1, h3);
     }

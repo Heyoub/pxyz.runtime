@@ -5,16 +5,19 @@
 
 use crate::{
     NodeKind, ActorKind, ConfirmationStatus, SideEffects, CompileError,
-    node_flags, edge_flags, hash_px,
+    node_flags, edge_flags,
     is_irreversible_op, is_write_op,
 };
 use crate::dsl::ast::*;
 use crate::compiler::ir::*;
 use std::collections::HashMap;
 
+#[cfg(test)]
+use crate::hash_px;
+
 /// Lower AST to IR
 pub fn lower(doc: &OmarDocument) -> Result<GraphIR, CompileError> {
-    let mut lowerer = Lowerer::new();
+    let lowerer = Lowerer::new();
     lowerer.lower(doc)
 }
 
@@ -52,9 +55,12 @@ impl Lowerer {
             self.lower_workflow(workflow)?;
         }
         
-        // Assign edge indices to nodes
-        self.assign_edge_indices();
-        
+        // Note: assign_edge_indices() is now called by compile_pipeline()
+        // This ensures all callers go through the canonical path
+
+        #[cfg(debug_assertions)]
+        self.ir.assert_invariants();
+
         Ok(self.ir)
     }
     
@@ -293,45 +299,6 @@ impl Lowerer {
         Ok(())
     }
     
-    fn assign_edge_indices(&mut self) {
-        // Sort edges by source node for efficient lookup
-        self.ir.edges.sort_by_key(|e| (e.from, e.id));
-        
-        // Collect edge assignments first (to avoid borrow conflict)
-        let mut edge_assignments: Vec<(NodeId, u16, u16)> = Vec::new();
-        let mut current_node: Option<NodeId> = None;
-        let mut current_start: u16 = 0;
-        let mut current_count: u16 = 0;
-
-        for (i, edge) in self.ir.edges.iter().enumerate() {
-            if Some(edge.from) != current_node {
-                // Record previous node's edges
-                if let Some(node_id) = current_node {
-                    edge_assignments.push((node_id, current_start, current_count));
-                }
-
-                // Start new node
-                current_node = Some(edge.from);
-                current_start = i as u16;
-                current_count = 1;
-            } else {
-                current_count += 1;
-            }
-        }
-
-        // Record last node
-        if let Some(node_id) = current_node {
-            edge_assignments.push((node_id, current_start, current_count));
-        }
-
-        // Apply edge assignments
-        for (node_id, start, count) in edge_assignments {
-            if let Some(node) = self.ir.get_node_mut(node_id) {
-                node.edge_start = start;
-                node.edge_count = count;
-            }
-        }
-    }
 }
 
 /// Parse op code from string (supports "0x0300" or "768")
@@ -355,7 +322,9 @@ mod tests {
         OmarDocument {
             version: "1.0".into(),
             predicates: vec![],
+            merge_policies: vec![],
             workflows: vec![Workflow {
+                description: None,
                 id: "test".into(),
                 entry: EntryPoint {
                     p: "test".into(),

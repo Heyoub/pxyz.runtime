@@ -54,9 +54,12 @@ pub fn remove_unreachable_nodes(mut ir: GraphIR) -> GraphIR {
         entry.node_id = id_remap[&entry.node_id];
     }
     
-    // Reassign edge indices
-    reassign_edge_indices(&mut ir);
-    
+    // Reassign edge indices (IR invariant)
+    ir.assign_edge_indices();
+
+    #[cfg(debug_assertions)]
+    ir.assert_invariants();
+
     ir
 }
 
@@ -151,22 +154,29 @@ pub fn optimize_edge_order(mut ir: GraphIR) -> GraphIR {
             .then(b.weight.cmp(&a.weight)) // Note: reversed for descending
             .then(a.id.cmp(&b.id))
     });
-    
-    // Reassign edge indices
-    reassign_edge_indices(&mut ir);
-    
+
+    // Reassign edge indices WITHOUT re-sorting (preserve weight order)
+    reassign_edge_indices_preserving_order(&mut ir);
+
+    #[cfg(debug_assertions)]
+    ir.assert_invariants();
+
     ir
 }
 
-/// Reassign edge_start/edge_count for all nodes after edge reordering
-fn reassign_edge_indices(ir: &mut GraphIR) {
+/// Reassign edge_start/edge_count WITHOUT re-sorting edges
+///
+/// This is different from `GraphIR::assign_edge_indices()` which sorts edges.
+/// The optimizer has already sorted edges by weight, so we need to preserve
+/// that order while updating the indices.
+fn reassign_edge_indices_preserving_order(ir: &mut GraphIR) {
     // Reset all nodes
     for node in &mut ir.nodes {
         node.edge_start = 0;
         node.edge_count = 0;
     }
-    
-    // Collect edge assignments first (to avoid borrow conflict)
+
+    // Collect edge assignments based on CURRENT order (don't sort!)
     let mut edge_assignments: Vec<(NodeId, u16, u16)> = Vec::new();
     let mut current_node: Option<NodeId> = None;
     let mut current_start: u16 = 0;

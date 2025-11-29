@@ -6,6 +6,42 @@ use crate::{Diagnostic, Severity};
 use serde::Serialize;
 use sha2::{Sha256, Digest};
 
+/// Calculate energy budget for graph traversal (Option B: Energy in function signatures)
+fn calculate_energy_budget(ir: &GraphIR, cache: &CacheAnalysis) -> EnergyStats {
+    let costs = EnergyCosts::STANDARD;
+
+    // Use Energy types explicitly for type safety (Horowitz 2014 model)
+    let node_energy: Energy = Energy::new(ir.nodes.len() as u64 * costs.node_visit.as_units());
+    let edge_energy: Energy = Energy::new(ir.edges.len() as u64 * costs.edge_eval.as_units());
+    let cache_energy: Energy = Energy::new(cache.estimated_energy());
+
+    let estimated_traversal: Energy = node_energy + edge_energy + cache_energy;
+
+    // Budget: MAX_VISITED (1000 nodes) × cost per node
+    let budget: Energy = Energy::new(1000 * costs.node_visit.as_units());
+
+    let efficiency = if estimated_traversal.as_units() > 0 {
+        1.0 - (estimated_traversal.as_units() as f64 / budget.as_units() as f64).min(1.0)
+    } else {
+        1.0
+    };
+
+    let tier_name = match cache.tier {
+        MemoryTier::Hot => "hot",
+        MemoryTier::Warm => "warm",
+        MemoryTier::Cold => "cold",
+        MemoryTier::External => "external",
+    };
+
+    EnergyStats {
+        estimated_traversal_eu: estimated_traversal.as_units(),
+        memory_tier: tier_name.to_string(),
+        cache_lines: cache.cache_lines,
+        budget_eu: budget.as_units(),
+        efficiency_estimate: efficiency,
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphAudit {
     pub version: String,
@@ -127,28 +163,7 @@ pub fn generate(ir: &GraphIR, source_xml: &str, binary: &[u8], diagnostics: &[Di
     
     // Compute energy estimation
     let cache_analysis = CacheAnalysis::analyze(binary);
-    let costs = EnergyCosts::STANDARD;
-
-    // Estimate traversal energy: nodes × node_cost + edges × edge_cost
-    let node_energy = ir.nodes.len() as u64 * costs.node_visit.as_units();
-    let edge_energy = ir.edges.len() as u64 * costs.edge_eval.as_units();
-    let estimated_traversal = node_energy + edge_energy + cache_analysis.estimated_energy();
-
-    // Budget from PXYZ limits: MAX_VISITED (1000) × node_visit cost
-    let budget = 1000 * costs.node_visit.as_units();
-
-    let efficiency = if estimated_traversal > 0 {
-        1.0 - (estimated_traversal as f64 / budget as f64).min(1.0)
-    } else {
-        1.0
-    };
-
-    let tier_name = match cache_analysis.tier {
-        MemoryTier::Hot => "hot",
-        MemoryTier::Warm => "warm",
-        MemoryTier::Cold => "cold",
-        MemoryTier::External => "external",
-    };
+    let energy_stats = calculate_energy_budget(ir, &cache_analysis);
 
     GraphAudit {
         version: "1.0.0".into(),
@@ -162,13 +177,7 @@ pub fn generate(ir: &GraphIR, source_xml: &str, binary: &[u8], diagnostics: &[Di
             entry_count: ir.entries.len(),
             string_pool_size: ir.strings.data.len(),
             binary_size: binary.len(),
-            energy: EnergyStats {
-                estimated_traversal_eu: estimated_traversal,
-                memory_tier: tier_name.to_string(),
-                cache_lines: cache_analysis.cache_lines,
-                budget_eu: budget,
-                efficiency_estimate: efficiency,
-            },
+            energy: energy_stats,
         },
         checks: AuditChecks {
             syntactic: CheckResult { 

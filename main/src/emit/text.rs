@@ -87,11 +87,12 @@ pub fn format(ir: &GraphIR) -> String {
     
     // String pool
     if !ir.strings.data.is_empty() {
-        out.push_str(&format!("STRING POOL ({} bytes, {} strings):\n", 
+        out.push_str(&format!("STRING POOL ({} bytes, {} strings):\n",
             ir.strings.data.len(), ir.strings.count()));
         out.push_str("────────────────────\n");
+        let total = ir.strings.count().min(20);
         for (i, (offset, s)) in ir.strings.iter().enumerate().take(20) {
-            out.push_str(&format!("  @{}: \"{}\"\n", offset, s));
+            out.push_str(&format!("  [{}/{}] @{}: \"{}\"\n", i + 1, total, offset, s));
         }
         if ir.strings.count() > 20 {
             out.push_str(&format!("  ... and {} more\n", ir.strings.count() - 20));

@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo build:*)",
+      "Bash(/tmp/test_cycle)",
+      "Bash(RUST_BACKTRACE=1 cargo test:*)"
     ],
     "deny": [],
     "ask": []
