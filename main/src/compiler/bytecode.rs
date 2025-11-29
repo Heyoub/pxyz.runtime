@@ -161,10 +161,17 @@ impl<'a> PredicateCompiler<'a> {
             PredicateExpr::Fn { name, arg } => {
                 self.compile_var(arg);
                 match name.to_lowercase().as_str() {
+                    // Utility functions
                     "length" | "len" => self.emit(Opcode::Len as u8),
                     "defined" | "isdefined" | "is_defined" => self.emit(Opcode::IsDefined as u8),
                     "null" | "isnull" | "is_null" => self.emit(Opcode::IsNull as u8),
                     "confirmed" | "isconfirmed" | "is_confirmed" => self.emit(Opcode::IsConfirmed as u8),
+
+                    // Merge/CRDT functions (Y-constraint operations for conflict resolution)
+                    "timestamp" | "ts" => self.emit(Opcode::Timestamp as u8),
+                    "flagged" | "isflagged" | "is_flagged" => self.emit(Opcode::IsFlagged as u8),
+                    "origin" | "author" => self.emit(Opcode::Origin as u8),
+
                     _ => {
                         return Err(CompileError::Predicate(format!(
                             "Unknown function: {}",

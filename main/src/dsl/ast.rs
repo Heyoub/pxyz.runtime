@@ -10,6 +10,8 @@ pub struct OmarDocument {
     pub predicates: Vec<PredicateDef>,
     pub workflows: Vec<Workflow>,
     pub templates: Vec<Template>,
+    /// Merge policies for CRDT conflict resolution (Y-constraint application)
+    pub merge_policies: Vec<EntityMerge>,
 }
 
 /// Schema definition
@@ -180,4 +182,91 @@ impl Default for Edge {
 pub struct Template {
     pub id: String,
     pub content: String,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MERGE POLICIES (Y-constraint application for CRDT conflict resolution)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Merge policy determines how CRDT conflicts are resolved.
+///
+/// The predicate VM evaluates these policies with a merge context containing:
+/// - `$a` - The first conflicting value
+/// - `$b` - The second conflicting value
+/// - `$candidate` - The proposed merged value (for validation)
+///
+/// Built-in strategies compile to bytecode; custom predicates use the full VM.
+#[derive(Debug, Clone)]
+pub enum MergePolicy {
+    /// Last-Writer-Wins: Compare timestamps, higher wins
+    /// Compiles to: timestamp($a) > timestamp($b) ? $a : $b
+    LWW,
+
+    /// First-Writer-Wins: Compare timestamps, lower wins (immutable-ish)
+    /// Compiles to: timestamp($a) < timestamp($b) ? $a : $b
+    FWW,
+
+    /// Vector clock dominance: True partial ordering
+    /// Compiles to: vclock_gt($a, $b) ? $a : (vclock_gt($b, $a) ? $b : CONFLICT)
+    VClock,
+
+    /// Maximum value wins (for counters, versions)
+    /// Compiles to: $a > $b ? $a : $b
+    Max,
+
+    /// Minimum value wins
+    /// Compiles to: $a < $b ? $a : $b
+    Min,
+
+    /// Union of sets/arrays
+    /// Compiles to: union($a, $b)
+    Union,
+
+    /// Intersection of sets/arrays
+    /// Compiles to: intersect($a, $b)
+    Intersect,
+
+    /// Flag for human review - never auto-resolve
+    /// Compiles to: flag_for_review($a, $b); return PENDING
+    HumanReview,
+
+    /// Origin-based: Prefer values from specific actor
+    /// Compiles to: origin($a) == preferred ? $a : $b
+    PreferOrigin { actor: String },
+
+    /// Custom predicate: Full predicate expression for complex logic
+    /// The predicate must return: 0 = use $a, 1 = use $b, 2 = use $candidate
+    Custom { predicate: String },
+}
+
+impl Default for MergePolicy {
+    fn default() -> Self {
+        MergePolicy::LWW
+    }
+}
+
+/// Field-level merge configuration
+#[derive(Debug, Clone)]
+pub struct FieldMerge {
+    /// Field name/path
+    pub field: String,
+    /// Merge policy for this field
+    pub policy: MergePolicy,
+    /// Optional validation predicate for merged result
+    pub validate: Option<String>,
+}
+
+/// Entity-level merge configuration
+#[derive(Debug, Clone)]
+pub struct EntityMerge {
+    /// Entity/schema name this applies to
+    pub entity: String,
+    /// Default policy for fields without explicit config
+    pub default_policy: MergePolicy,
+    /// Field-specific overrides
+    pub fields: Vec<FieldMerge>,
+    /// Predicate that must pass for any merge to proceed
+    pub pre_condition: Option<String>,
+    /// Predicate to validate final merged entity
+    pub post_validate: Option<String>,
 }

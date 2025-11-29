@@ -47,6 +47,23 @@
   
   (import "io" "emit_event" (func $io_emit_event (param i32 i32 i32)))
   ;; emit_event(kind, node_id, data_ptr) - for EventBus
+
+  ;; Merge/CRDT host functions (Y-constraint operations for conflict resolution)
+  (import "io" "get_timestamp" (func $io_get_timestamp (param i32) (result i64)))
+  ;; get_timestamp(value_ref) -> i64 timestamp (for LWW merge policies)
+
+  (import "io" "is_flagged" (func $io_is_flagged (param i32) (result i32)))
+  ;; is_flagged(value_ref) -> 0 or 1 (for human review flags)
+
+  (import "io" "get_origin" (func $io_get_origin (param i32) (result i32)))
+  ;; get_origin(value_ref) -> string_offset (author/origin id)
+
+  (import "io" "vclock_dominates" (func $io_vclock_dominates (param i32 i32) (result i32)))
+  ;; vclock_dominates(a_ref, b_ref) -> 1 if a's vclock dominates b's
+
+  (import "io" "get_merge_field" (func $io_get_merge_field (param i32 i32 i32) (result i64)))
+  ;; get_merge_field(selector, path_ptr, path_len) -> i64 (type << 32 | value)
+  ;; selector: 0=a, 1=b, 2=candidate
   
   ;; ───────────────────────────────────────────────────────────────────────────
   ;; MEMORY
@@ -152,6 +169,14 @@
   (global $OP_IS_NULL i32 (i32.const 0x42))
   (global $OP_IS_DEFINED i32 (i32.const 0x43))
   (global $OP_IS_CONFIRMED i32 (i32.const 0x44))
+
+  ;; Merge/CRDT opcodes (Y-constraint operations for conflict resolution)
+  (global $OP_TIMESTAMP i32 (i32.const 0x50))    ;; pop value ref, push i64 timestamp
+  (global $OP_IS_FLAGGED i32 (i32.const 0x51))   ;; pop value ref, push 1 if flagged for review
+  (global $OP_ORIGIN i32 (i32.const 0x52))       ;; pop value ref, push origin/author id
+  (global $OP_VCLOCK_GT i32 (i32.const 0x53))    ;; pop 2 value refs, push 1 if first dominates second
+  (global $OP_MERGE_FIELD i32 (i32.const 0x54))  ;; + 1 byte selector, load merge context field
+
   (global $OP_CALL_PRED i32 (i32.const 0xF0))
   (global $OP_RET i32 (i32.const 0xFF))
   
@@ -686,7 +711,60 @@
             (local.set $a (call $stack_pop))
             (drop (call $stack_push (call $io_is_confirmed (local.get $a))))
             (br $exec)))
-        
+
+        ;; ─── MERGE/CRDT OPCODES (Y-constraint operations) ───
+
+        ;; TIMESTAMP - get timestamp of value (for LWW merge policies)
+        (if (i32.eq (local.get $op) (global.get $OP_TIMESTAMP))
+          (then
+            (local.set $a (call $stack_pop))
+            ;; Push low 32 bits of timestamp (seconds since epoch fits in i32)
+            (drop (call $stack_push (i32.wrap_i64 (call $io_get_timestamp (local.get $a)))))
+            (br $exec)))
+
+        ;; IS_FLAGGED - check if value is flagged for human review
+        (if (i32.eq (local.get $op) (global.get $OP_IS_FLAGGED))
+          (then
+            (local.set $a (call $stack_pop))
+            (drop (call $stack_push (call $io_is_flagged (local.get $a))))
+            (br $exec)))
+
+        ;; ORIGIN - get origin/author of value
+        (if (i32.eq (local.get $op) (global.get $OP_ORIGIN))
+          (then
+            (local.set $a (call $stack_pop))
+            (drop (call $stack_push (call $io_get_origin (local.get $a))))
+            (br $exec)))
+
+        ;; VCLOCK_GT - check if first vclock dominates second
+        (if (i32.eq (local.get $op) (global.get $OP_VCLOCK_GT))
+          (then
+            (local.set $b (call $stack_pop))
+            (local.set $a (call $stack_pop))
+            (drop (call $stack_push (call $io_vclock_dominates (local.get $a) (local.get $b))))
+            (br $exec)))
+
+        ;; MERGE_FIELD - load field from merge context ($a, $b, or $candidate)
+        (if (i32.eq (local.get $op) (global.get $OP_MERGE_FIELD))
+          (then
+            ;; Read selector byte (0=a, 1=b, 2=candidate)
+            (local.set $a (i32.load8_u (local.get $ptr)))
+            (local.set $ptr (i32.add (local.get $ptr) (i32.const 1)))
+            ;; Read string offset for field path
+            (local.set $str_off (i32.load (local.get $ptr)))
+            (local.set $ptr (i32.add (local.get $ptr) (i32.const 4)))
+            ;; Call host to get field value
+            (drop (call $stack_push
+              (i32.wrap_i64 (call $io_get_merge_field
+                (local.get $a)
+                (i32.add (global.get $GRAPH_BASE)
+                  (i32.add (i32.load (i32.add (global.get $GRAPH_BASE) (global.get $HDR_STRINGS_OFF)))
+                    (local.get $str_off)))
+                (i32.const 64)))))
+            (br $exec)))
+
+        ;; ─── END MERGE/CRDT OPCODES ───
+
         ;; CONTAINS - delegate to host
         (if (i32.eq (local.get $op) (global.get $OP_CONTAINS))
           (then

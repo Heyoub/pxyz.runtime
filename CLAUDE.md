@@ -397,44 +397,40 @@ pxyz init myproject
 
 ```shell
 pxyz/
-├── src/
+├── CLAUDE.md               # This documentation
+├── MENTAL_MODEL.md         # Design philosophy
+├── README.md               # Project overview
+│
+├── main/                   # Rust compiler crate
+│   ├── Cargo.toml          # Dependencies
 │   ├── lib.rs              # Public API: compile(), validate()
-│   ├── main.rs             # CLI
+│   ├── main.rs             # CLI entry point
 │   │
-│   ├── core/               # Shared types
-│   │   ├── types.rs        # NodeKind, ActorKind, SideEffects
-│   │   ├── opcodes.rs      # Predicate & IO opcodes
-│   │   └── binary.rs       # Format constants, hash_px()
-│   │
-│   ├── dsl/                # XML parsing
-│   │   ├── ast.rs          # AST types
-│   │   └── parser.rs       # XML → AST
-│   │
-│   ├── graph/              # Graph IR
-│   │   ├── ir.rs           # GraphIR, GNode, GEdge, StringPool
-│   │   ├── lower.rs        # AST → IR
-│   │   └── optimize.rs     # Dead code, dedup predicates
-│   │
-│   ├── constraints/        # Validation
-│   │   ├── syntactic.rs    # SYN001-007
-│   │   ├── semantic.rs     # SEM001-007
-│   │   └── pragmatic.rs    # PRAG001-005
-│   │
-│   ├── predicates/         # Predicate compiler
-│   │   └── bytecode.rs     # AST → bytecode
-│   │
-│   ├── emit/               # Output
-│   │   ├── binary.rs       # IR → graph.bin
-│   │   ├── audit.rs        # IR → audit.json
-│   │   ├── text.rs         # Human-readable
-│   │   └── mermaid.rs      # Flowchart diagram
-│   │
-│   └── runtime/            # Execution
-│       ├── graph.rs        # Binary loader
-│       ├── predicate_vm.rs # Bytecode interpreter
-│       ├── traversal.rs    # Graph walker
-│       ├── events.rs       # EventBus
-│       └── io.rs           # IoHandler trait
+│   └── src/
+│       ├── compiler/       # Core compilation & validation
+│       │   ├── mod.rs      # Module exports
+│       │   ├── bytecode.rs # Predicate AST → bytecode
+│       │   ├── ir.rs       # GraphIR, GNode, GEdge, StringPool
+│       │   ├── lower.rs    # AST → IR transformation
+│       │   ├── optimize.rs # Dead code elimination, dedup
+│       │   ├── syntactic.rs # SYN001-007 structure checks
+│       │   ├── semantic.rs  # SEM001-007 logic checks
+│       │   └── pragmatic.rs # PRAG001-005 business rules
+│       │
+│       ├── dsl/            # XML parsing
+│       │   ├── mod.rs      # Module exports
+│       │   ├── ast.rs      # AST types
+│       │   └── parser.rs   # XML → AST
+│       │
+│       └── emit/           # Output generation
+│           ├── mod.rs      # Module exports
+│           ├── binary.rs   # IR → graph.bin
+│           ├── audit.rs    # IR → audit.json
+│           ├── text.rs     # Human-readable output
+│           └── mermaid.rs  # Flowchart diagram
+│
+└── wasm/                   # WASM runtime (production)
+    └── pxyz.wat            # ~500 lines auditable runtime
 ```
 
 ---

@@ -32,6 +32,9 @@ pub fn parse(xml: &str) -> Result<OmarDocument, CompileError> {
                     b"templates" => {
                         doc.templates = parse_templates(&mut reader)?;
                     }
+                    b"merge" | b"merge_policies" => {
+                        doc.merge_policies = parse_merge_policies(&mut reader)?;
+                    }
                     _ => {}
                 }
             }
@@ -523,6 +526,98 @@ fn parse_templates(reader: &mut Reader<&[u8]>) -> Result<Vec<Template>, CompileE
     Ok(templates)
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MERGE POLICY PARSING (Y-constraint application for CRDT conflict resolution)
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn parse_merge_policies(reader: &mut Reader<&[u8]>) -> Result<Vec<EntityMerge>, CompileError> {
+    let mut policies = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"entity" => {
+                let entity = get_attr(&e, "name").unwrap_or_default();
+                let default_str = get_attr(&e, "default").unwrap_or_else(|| "lww".into());
+                let default_policy = parse_merge_policy_name(&default_str);
+                let pre_condition = get_attr(&e, "pre");
+                let post_validate = get_attr(&e, "post");
+
+                let fields = parse_field_merges(reader)?;
+
+                policies.push(EntityMerge {
+                    entity,
+                    default_policy,
+                    fields,
+                    pre_condition,
+                    post_validate,
+                });
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"merge" || e.name().as_ref() == b"merge_policies" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(CompileError::Parse(e.to_string())),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(policies)
+}
+
+fn parse_field_merges(reader: &mut Reader<&[u8]>) -> Result<Vec<FieldMerge>, CompileError> {
+    let mut fields = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) if e.name().as_ref() == b"field" => {
+                let field = get_attr(&e, "name").unwrap_or_default();
+                let policy_str = get_attr(&e, "policy").unwrap_or_else(|| "lww".into());
+                let policy = parse_merge_policy_name(&policy_str);
+                let validate = get_attr(&e, "validate");
+
+                // Handle custom predicate reference
+                let final_policy = if policy_str.starts_with("predicate:") {
+                    MergePolicy::Custom {
+                        predicate: policy_str.trim_start_matches("predicate:").to_string()
+                    }
+                } else if let Some(actor) = get_attr(&e, "prefer_origin") {
+                    MergePolicy::PreferOrigin { actor }
+                } else {
+                    policy
+                };
+
+                fields.push(FieldMerge {
+                    field,
+                    policy: final_policy,
+                    validate,
+                });
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"entity" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(CompileError::Parse(e.to_string())),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(fields)
+}
+
+fn parse_merge_policy_name(name: &str) -> MergePolicy {
+    match name.to_lowercase().as_str() {
+        "lww" | "last-writer-wins" | "lastwriterwins" => MergePolicy::LWW,
+        "fww" | "first-writer-wins" | "firstwriterwins" => MergePolicy::FWW,
+        "vclock" | "vector-clock" | "vectorclock" => MergePolicy::VClock,
+        "max" | "maximum" => MergePolicy::Max,
+        "min" | "minimum" => MergePolicy::Min,
+        "union" | "set-union" => MergePolicy::Union,
+        "intersect" | "intersection" | "set-intersect" => MergePolicy::Intersect,
+        "human" | "human-review" | "humanreview" | "review" => MergePolicy::HumanReview,
+        _ => MergePolicy::LWW, // Default fallback
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,5 +701,50 @@ mod tests {
             }
             _ => panic!("Expected And"),
         }
+    }
+
+    #[test]
+    fn test_parse_merge_policies() {
+        let xml = r#"
+            <omar>
+                <merge>
+                    <entity name="Contact" default="lww">
+                        <field name="email" policy="fww"/>
+                        <field name="tags" policy="union"/>
+                        <field name="notes" policy="human-review"/>
+                        <field name="priority" policy="max"/>
+                    </entity>
+                    <entity name="Transaction" default="vclock" pre="can_merge" post="is_valid">
+                        <field name="amount" policy="predicate:resolve_amount"/>
+                    </entity>
+                </merge>
+                <workflow id="test">
+                    <entry p="t" x="r" node="s"/>
+                    <nodes><node id="s" kind="terminal"/></nodes>
+                    <edges/>
+                </workflow>
+            </omar>
+        "#;
+
+        let doc = parse(xml).unwrap();
+        assert_eq!(doc.merge_policies.len(), 2);
+
+        // Check Contact entity
+        let contact = &doc.merge_policies[0];
+        assert_eq!(contact.entity, "Contact");
+        assert!(matches!(contact.default_policy, MergePolicy::LWW));
+        assert_eq!(contact.fields.len(), 4);
+        assert!(matches!(contact.fields[0].policy, MergePolicy::FWW));
+        assert!(matches!(contact.fields[1].policy, MergePolicy::Union));
+        assert!(matches!(contact.fields[2].policy, MergePolicy::HumanReview));
+        assert!(matches!(contact.fields[3].policy, MergePolicy::Max));
+
+        // Check Transaction entity
+        let transaction = &doc.merge_policies[1];
+        assert_eq!(transaction.entity, "Transaction");
+        assert!(matches!(transaction.default_policy, MergePolicy::VClock));
+        assert_eq!(transaction.pre_condition, Some("can_merge".into()));
+        assert_eq!(transaction.post_validate, Some("is_valid".into()));
+        assert!(matches!(&transaction.fields[0].policy, MergePolicy::Custom { predicate } if predicate == "resolve_amount"));
     }
 }

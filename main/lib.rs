@@ -150,7 +150,15 @@ pub enum Opcode {
     IsNull = 0x42,
     IsDefined = 0x43,
     IsConfirmed = 0x44,
-    
+
+    // Merge/CRDT operations (Y-constraint application for conflict resolution)
+    // These opcodes enable predicates to be used as merge policies
+    Timestamp = 0x50,      // pop value ref, push i64 timestamp (for LWW)
+    IsFlagged = 0x51,      // pop value ref, push 1 if flagged for review
+    Origin = 0x52,         // pop value ref, push origin/author string offset
+    VClockGt = 0x53,       // pop 2 value refs, push 1 if first vclock dominates second
+    MergeField = 0x54,     // + 1 byte (0=a, 1=b, 2=candidate), load merge context field
+
     // Control
     CallPred = 0xF0,   // + 2 bytes (predicate ID)
     Ret = 0xFF,
@@ -182,6 +190,11 @@ impl Opcode {
             0x42 => Some(Self::IsNull),
             0x43 => Some(Self::IsDefined),
             0x44 => Some(Self::IsConfirmed),
+            0x50 => Some(Self::Timestamp),
+            0x51 => Some(Self::IsFlagged),
+            0x52 => Some(Self::Origin),
+            0x53 => Some(Self::VClockGt),
+            0x54 => Some(Self::MergeField),
             0xF0 => Some(Self::CallPred),
             0xFF => Some(Self::Ret),
             _ => None,

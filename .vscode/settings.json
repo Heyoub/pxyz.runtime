@@ -1,10 +1,14 @@
 {
     "cSpell.words": [
+        "aphantasia",
         "bitfield",
         "chrono",
+        "CRDT",
+        "Datastar",
         "dedup",
         "Deque",
         "disasm",
+        "functors",
         "gapi",
         "gedge",
         "gnode",
@@ -13,17 +17,22 @@
         "isdefined",
         "isnull",
         "Lowerer",
+        "morphisms",
         "myproject",
+        "Pathfinding",
         "PRAG",
         "proptest",
         "PXYZ",
         "Qdrant",
+        "reloadable",
         "repr",
         "rulebook",
         "Sandboxed",
         "serde",
         "thiserror",
+        "UCAN",
         "uncompiled",
+        "unsend",
         "WABT"
     ]
 }
