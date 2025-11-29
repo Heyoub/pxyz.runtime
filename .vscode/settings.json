@@ -1,0 +1,29 @@
+{
+    "cSpell.words": [
+        "bitfield",
+        "chrono",
+        "dedup",
+        "Deque",
+        "disasm",
+        "gapi",
+        "gedge",
+        "gnode",
+        "irrev",
+        "isconfirmed",
+        "isdefined",
+        "isnull",
+        "Lowerer",
+        "myproject",
+        "PRAG",
+        "proptest",
+        "PXYZ",
+        "Qdrant",
+        "repr",
+        "rulebook",
+        "Sandboxed",
+        "serde",
+        "thiserror",
+        "uncompiled",
+        "WABT"
+    ]
+}
