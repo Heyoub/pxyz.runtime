@@ -1,8 +1,7 @@
 //! Binary Emission (graph.bin)
 
-use crate::graph::ir::*;
-use crate::core::binary::*;
-use crate::CompileError;
+use crate::compiler::ir::*;
+use crate::{CompileError, MAGIC, VERSION_MAJOR, VERSION_MINOR, HEADER_SIZE};
 use sha2::{Sha256, Digest};
 
 /// Emit graph.bin
@@ -73,17 +72,7 @@ pub fn emit(ir: &GraphIR, source_xml: &str) -> Result<Vec<u8>, CompileError> {
     Ok(buffer)
 }
 
-//! Binary Format Constants
-
-/// Magic number: "PXYZ" in little-endian
-pub const MAGIC: u32 = 0x504E5958;
-
-/// Format version
-pub const VERSION_MAJOR: u16 = 1;
-pub const VERSION_MINOR: u16 = 0;
-
-/// Header size in bytes
-pub const HEADER_SIZE: usize = 0x60; // 96 bytes
+// Binary Format Constants (main constants defined in lib.rs)
 
 /// Node entry size
 pub const NODE_ENTRY_SIZE: usize = 16;

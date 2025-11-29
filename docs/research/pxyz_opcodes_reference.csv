@@ -1,0 +1,26 @@
+Opcode (Hex),Name,Stack Effect,Description
+0x00,NOOP,-,No operation
+0x01,PUSH_INT,→ val,Push an immediate 32-bit integer value
+0x02,PUSH_STR,→ val,Push a string reference (offset into String Pool)
+0x03,LOAD_VAR,→ val,Load a variable from host context
+0x04,LOAD_FIELD,obj → val,Get a field from an object reference
+0x10,EQ,"a, b → bool","Pop two values, push 1 if equal"
+0x11,NEQ,"a, b → bool","Pop two values, push 1 if not equal"
+0x12,GT,"a, b → bool","Pop a and b, push 1 if a > b"
+0x13,GTE,"a, b → bool","Pop a and b, push 1 if a >= b"
+0x14,LT,"a, b → bool","Pop a and b, push 1 if a < b"
+0x15,LTE,"a, b → bool","Pop a and b, push 1 if a <= b"
+0x20,AND,"a, b → bool","Pop two booleans, push their logical AND"
+0x21,OR,"a, b → bool","Pop two booleans, push their logical OR"
+0x22,NOT,a → bool,"Pop a boolean, push its logical NOT"
+0x30,CONTAINS,"haystack, needle → bool",Check if string/array contains value
+0x31,MATCHES,str → bool,Check if string matches regex pattern
+0x32,STARTS_WITH,"str, prefix → bool",Check if string starts with prefix
+0x33,ENDS_WITH,"str, suffix → bool",Check if string ends with suffix
+0x40,LEN,val → int,Push the length of a string or array
+0x41,GET,"arr, idx → val",Get an element from array at index
+0x42,IS_NULL,val → bool,Push 1 if value is null/undefined
+0x43,IS_DEFINED,val → bool,Push 1 if value is not null/undefined
+0x44,IS_CONFIRMED,val → bool,Check if entity data is confirmed
+0xF0,CALL_PRED,→ bool,Call another predicate by 16-bit ID
+0xFF,RET,bool →,Return boolean and terminate execution

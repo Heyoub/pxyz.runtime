@@ -7,9 +7,14 @@
 //! workflow.xml → [this crate] → graph.bin → [pxyz.wasm + io.js]
 //! ```
 
+#[path = "src/dsl/mod.rs"]
 pub mod dsl;
+#[path = "src/emit/mod.rs"]
 pub mod emit;
+#[path = "src/compiler/mod.rs"]
 pub mod compiler;
+#[path = "src/physics/mod.rs"]
+pub mod physics;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPEC: Binary Format Constants (must match WAT + ARCHITECTURE.md)
@@ -25,8 +30,10 @@ pub const HEADER_SIZE: usize = 96;
 // SPEC: Node Kinds (must match WAT globals)
 // ═══════════════════════════════════════════════════════════════════════════
 
+use serde::{Serialize, Deserialize};
+
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NodeKind {
     Transform = 0,
     External = 1,

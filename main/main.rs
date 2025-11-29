@@ -112,7 +112,7 @@ fn cmd_compile(input: &PathBuf, output: &PathBuf, emit_audit: bool, strict: bool
             
             Ok(())
         }
-        Err(pxyz::CompileError::ValidationFailed { diagnostics }) => {
+        Err(pxyz::CompileError::Validation { diagnostics }) => {
             for diag in &diagnostics {
                 print_diagnostic(diag);
             }

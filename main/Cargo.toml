@@ -30,5 +30,8 @@ sha2 = "0.10"
 # Timestamps for audit
 chrono = { version = "0.4", features = ["serde"] }
 
+# Physics module - compile-time assertions
+static_assertions = "1.1"
+
 [dev-dependencies]
 proptest = "1"

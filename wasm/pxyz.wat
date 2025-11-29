@@ -92,6 +92,12 @@
   (global $pred_steps (mut i32) (i32.const 0))     ;; step counter
   (global $pred_call_depth (mut i32) (i32.const 0)) ;; nested predicate calls
 
+  ;; ─── ENERGY TRACKING (Physics Integration) ───
+  ;; Based on Horowitz 2014: DRAM = 6400× register operation
+  ;; Our bounded execution limits ARE energy budgets
+  (global $energy_spent (mut i64) (i64.const 0))   ;; total energy units spent
+  (global $energy_budget (mut i64) (i64.const 1000000)) ;; MAX_VISITED × 1000
+
   ;; ───────────────────────────────────────────────────────────────────────────
   ;; CONSTANTS
   ;; ───────────────────────────────────────────────────────────────────────────
@@ -210,6 +216,13 @@
   (global $EVT_AUTH_FAIL i32 (i32.const 10))
   (global $EVT_ERROR i32 (i32.const 11))
 
+  ;; Energy costs (Horowitz 2014 scale: register = 1, DRAM = 6400)
+  (global $ENERGY_STACK_OP i64 (i64.const 1))      ;; push/pop
+  (global $ENERGY_COMPARE i64 (i64.const 1))       ;; predicate comparison
+  (global $ENERGY_NODE_VISIT i64 (i64.const 100))  ;; visit a node (L2 access)
+  (global $ENERGY_EDGE_EVAL i64 (i64.const 50))    ;; evaluate edge predicate
+  (global $ENERGY_IO_CALL i64 (i64.const 100000))  ;; external I/O (DRAM + bus)
+
   ;; ═══════════════════════════════════════════════════════════════════════════
   ;; EXPORTS
   ;; ═══════════════════════════════════════════════════════════════════════════
@@ -225,6 +238,29 @@
   
   (func (export "get_graph_ptr") (result i32)
     (global.get $GRAPH_BASE))
+
+  ;; ─── ENERGY TRACKING EXPORTS ───
+
+  (func (export "get_energy_spent") (result i64)
+    (global.get $energy_spent))
+
+  (func (export "get_energy_budget") (result i64)
+    (global.get $energy_budget))
+
+  (func (export "get_energy_efficiency") (result f64)
+    ;; Returns 0.0-1.0 (1.0 = used nothing, 0.0 = exhausted budget)
+    (if (result f64) (i64.eqz (global.get $energy_budget))
+      (then (f64.const 1.0))
+      (else
+        (f64.sub (f64.const 1.0)
+          (f64.div
+            (f64.convert_i64_u (global.get $energy_spent))
+            (f64.convert_i64_u (global.get $energy_budget)))))))
+
+  ;; Internal: spend energy (called during traversal)
+  (func $spend_energy (param $amount i64)
+    (global.set $energy_spent
+      (i64.add (global.get $energy_spent) (local.get $amount))))
 
   ;; ═══════════════════════════════════════════════════════════════════════════
   ;; GRAPH LOADING
@@ -349,7 +385,8 @@
         (i32.store8 (i32.add (global.get $VISITED_BASE) (local.get $i)) (i32.const 0))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $loop)))
-    (global.set $visited_count (i32.const 0)))
+    (global.set $visited_count (i32.const 0))
+    (global.set $energy_spent (i64.const 0))) ;; Reset energy tracking
   
   (func $is_visited (param $node_id i32) (result i32)
     (local $byte_idx i32)
@@ -818,7 +855,10 @@
     ;; Emit node enter event
     (if (global.get $trace_mode)
       (then (call $io_emit_event (global.get $EVT_NODE_ENTER) (local.get $node_id) (i32.const 0))))
-    
+
+    ;; Track energy for node visit
+    (call $spend_energy (global.get $ENERGY_NODE_VISIT))
+
     ;; Check actor permission
     (if (i32.eqz (call $check_actor_allowed (local.get $node_ptr)))
       (then
@@ -835,7 +875,8 @@
     
     (if (i32.eq (local.get $kind) (global.get $KIND_EXTERNAL))
       (then
-        ;; External: call host IO
+        ;; External: call host IO (EXPENSIVE - track energy)
+        (call $spend_energy (global.get $ENERGY_IO_CALL))
         (if (global.get $trace_mode)
           (then (call $io_emit_event (global.get $EVT_IO_CALL) (local.get $node_id) (local.get $op_code))))
         (local.set $result (call $io_call (local.get $op_code) (global.get $IO_BASE) (i32.const 0)))))
@@ -980,10 +1021,13 @@
               (call $get_edge_ptr (i32.add (local.get $edge_start) (local.get $i))))
             (local.set $pred_id (call $get_edge_predicate (local.get $edge_ptr)))
             
+            ;; Track energy for edge evaluation
+            (call $spend_energy (global.get $ENERGY_EDGE_EVAL))
+
             ;; Emit predicate eval event
             (if (global.get $trace_mode)
               (then (call $io_emit_event (global.get $EVT_PRED_EVAL) (local.get $pred_id) (i32.const 0))))
-            
+
             ;; Evaluate predicate
             (if (call $eval_predicate (local.get $pred_id))
               (then

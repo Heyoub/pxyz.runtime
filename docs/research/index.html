@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PXYZ Explorer</title>
+  <link rel="preconnect" href="https://r2cdn.perplexity.ai">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container flex flex-col" id="main-app">
+    <header class="mb-8 py-16">
+      <h1>PXYZ Explorer</h1>
+      <p class="mt-8" style="color:var(--color-text-secondary);max-width:680px">Interactive documentation and reference for the PXYZ safe AI workflow system. Explore node types, predicate VM opcodes, I/O operations, constraints, binary format, and example workflows.</p>
+    </header>
+    <div class="flex gap-8 items-center mb-8" id="tab-bar">
+      <button class="btn btn--secondary tab-btn" data-tab="overview">Architecture Overview</button>
+      <button class="btn btn--secondary tab-btn" data-tab="nodes">Node Kinds Reference</button>
+      <button class="btn btn--secondary tab-btn" data-tab="opcodes">Predicate VM Opcodes</button>
+      <button class="btn btn--secondary tab-btn" data-tab="io">IO Operation Codes</button>
+      <button class="btn btn--secondary tab-btn" data-tab="constraints">Constraint System</button>
+      <button class="btn btn--secondary tab-btn" data-tab="binary">Binary Format Reference</button>
+      <button class="btn btn--secondary tab-btn" data-tab="workflow">Example Workflow</button>
+      <input type="text" id="searchbar" class="form-control ml-8" style="max-width:200px" placeholder="Search..." aria-label="Search docs">
+    </div>
+    <div class="flex">
+      <main id="tab-content" class="flex-1 px-8 py-8 card card__body"></main>
+      <aside id="glossary-sidebar" class="px-8 py-8 card" style="width:320px;min-width:240px;max-width:340px;margin-left:var(--space-16)"></aside>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

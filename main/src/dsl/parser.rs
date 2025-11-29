@@ -8,7 +8,7 @@ use quick_xml::Reader;
 /// Parse XML to AST
 pub fn parse(xml: &str) -> Result<OmarDocument, CompileError> {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.trim_text(true);
     
     let mut doc = OmarDocument::default();
     let mut buf = Vec::new();

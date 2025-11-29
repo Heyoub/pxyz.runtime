@@ -297,21 +297,19 @@ impl Lowerer {
         // Sort edges by source node for efficient lookup
         self.ir.edges.sort_by_key(|e| (e.from, e.id));
         
-        // Assign edge start/count to each node
+        // Collect edge assignments first (to avoid borrow conflict)
+        let mut edge_assignments: Vec<(NodeId, u16, u16)> = Vec::new();
         let mut current_node: Option<NodeId> = None;
         let mut current_start: u16 = 0;
         let mut current_count: u16 = 0;
-        
+
         for (i, edge) in self.ir.edges.iter().enumerate() {
             if Some(edge.from) != current_node {
-                // Finish previous node
+                // Record previous node's edges
                 if let Some(node_id) = current_node {
-                    if let Some(node) = self.ir.get_node_mut(node_id) {
-                        node.edge_start = current_start;
-                        node.edge_count = current_count;
-                    }
+                    edge_assignments.push((node_id, current_start, current_count));
                 }
-                
+
                 // Start new node
                 current_node = Some(edge.from);
                 current_start = i as u16;
@@ -320,12 +318,17 @@ impl Lowerer {
                 current_count += 1;
             }
         }
-        
-        // Finish last node
+
+        // Record last node
         if let Some(node_id) = current_node {
+            edge_assignments.push((node_id, current_start, current_count));
+        }
+
+        // Apply edge assignments
+        for (node_id, start, count) in edge_assignments {
             if let Some(node) = self.ir.get_node_mut(node_id) {
-                node.edge_start = current_start;
-                node.edge_count = current_count;
+                node.edge_start = start;
+                node.edge_count = count;
             }
         }
     }

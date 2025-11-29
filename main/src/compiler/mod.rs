@@ -16,7 +16,6 @@ pub mod pragmatic;
 
 use crate::{Diagnostic, CompileError};
 use crate::dsl::ast::{OmarDocument, PredicateExpr};
-use ir::GraphIR;
 
 // Re-export commonly used items
 pub use ir::{GraphIR, GNode, GEdge, GEntry, CompiledPredicate, StringPool};
